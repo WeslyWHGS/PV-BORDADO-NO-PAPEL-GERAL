@@ -56,7 +56,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     track.addEventListener('scroll', updateArrows, { passive: true });
     window.addEventListener('resize', updateArrows);
-    updateArrows();
+    // Adia a primeira leitura de layout pro próximo frame, em vez de ler
+    // scrollWidth/clientWidth em sequência com o resto do script (o que
+    // força um reflow síncrono logo no carregamento da página).
+    requestAnimationFrame(updateArrows);
   })();
 
   // Depoimentos — carrossel automático (só ativo no modo mobile, quando o
@@ -123,47 +126,28 @@ document.addEventListener('DOMContentLoaded', function () {
     start();
   })();
 
-  // Countdown — Hours : Minutes : Seconds (evergreen rolling cycle)
+  // Vídeo do hero — carregamento adiado. O vídeo de 1,4MB competia por
+  // banda com CSS/fontes/HTML logo na carga, inflando FCP/LCP (grave em
+  // 4G). Ele só começa a baixar depois que a página termina de carregar
+  // (window 'load'), usando o poster estático como conteúdo visível
+  // imediato até lá.
   (function () {
-    var el = document.getElementById('megaCountdown');
-    if (!el) return;
-    var nums = {
-      hours: el.querySelector('[data-cd="hours"]'),
-      minutes: el.querySelector('[data-cd="minutes"]'),
-      seconds: el.querySelector('[data-cd="seconds"]'),
-    };
-    // First visit starts the clock, persisted in localStorage so refreshes
-    // don't reset it. When it hits 0, it resets to a fresh cycle.
-    var STORAGE_KEY = 'pa_countdown_target';
-    var CYCLE_MS = 15 * 60 * 60 * 1000; // 15 hours
+    var video = document.getElementById('heroVideo');
+    if (!video) return;
+    var source = video.querySelector('source[data-src]');
+    if (!source) return;
 
-    function getTarget() {
-      var t = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
-      var now = Date.now();
-      if (!t || t <= now) {
-        t = now + CYCLE_MS;
-        try { localStorage.setItem(STORAGE_KEY, t); } catch (e) {}
-      }
-      return t;
+    function loadVideo() {
+      source.src = source.getAttribute('data-src');
+      video.load();
+      video.play().catch(function () {}); // navegador pode bloquear até o 1º frame existir
     }
-    var target = getTarget();
 
-    function pad(n) { return n < 10 ? '0' + n : '' + n; }
-
-    function tick() {
-      var diff = target - Date.now();
-      if (diff <= 0) {
-        target = Date.now() + CYCLE_MS;
-        try { localStorage.setItem(STORAGE_KEY, target); } catch (e) {}
-        return;
-      }
-      var s = Math.floor(diff / 1000);
-      if (nums.hours) nums.hours.textContent = pad(Math.floor(s / 3600));
-      if (nums.minutes) nums.minutes.textContent = pad(Math.floor((s % 3600) / 60));
-      if (nums.seconds) nums.seconds.textContent = pad(s % 60);
+    if (document.readyState === 'complete') {
+      loadVideo();
+    } else {
+      window.addEventListener('load', loadVideo);
     }
-    tick();
-    setInterval(tick, 1000);
   })();
 
   // Reveal on scroll (IntersectionObserver)
